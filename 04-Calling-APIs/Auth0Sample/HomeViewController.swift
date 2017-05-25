@@ -44,18 +44,17 @@ class HomeViewController: UIViewController {
     fileprivate func showLogin() {
         Auth0
             .webAuth()
-            .scope("openid profile")
+            .scope("openid offline_access")
             .start {
                 switch $0 {
                 case .failure(let error):
-                    // Handle the error
-                    print("Error: \(error)")
+                    print("Auth Error: \(error)")
                 case .success(let credentials):
-                    guard let accessToken = credentials.accessToken, let idToken = credentials.idToken else { return }
-                    SessionManager.shared.storeTokens(accessToken, idToken: idToken)
-                    SessionManager.shared.retrieveProfile { error in
+                    _ = SessionManager.shared.store(credentials: credentials)
+                    SessionManager.shared.profile { error, profile in
                         guard error == nil else {
-                            return self.showLogin()
+                            print("Error: \(String(describing: error))")
+                            return
                         }
                         DispatchQueue.main.async {
                             self.performSegue(withIdentifier: "ShowProfileNonAnimated", sender: nil)
@@ -68,10 +67,10 @@ class HomeViewController: UIViewController {
     fileprivate func checkAccessToken() {
         let loadingAlert = UIAlertController.loadingAlert()
         loadingAlert.presentInViewController(self)
-        SessionManager.shared.logout()
-        SessionManager.shared.retrieveProfile { error in
+        SessionManager.shared.profile { error, _ in
             loadingAlert.dismiss(animated: true) {
                 guard error == nil else {
+                    print("Error: \(String(describing: error)), Present Login")
                     return self.showLogin()
                 }
                 self.performSegue(withIdentifier: "ShowProfileNonAnimated", sender: nil)

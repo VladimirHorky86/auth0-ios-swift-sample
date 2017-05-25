@@ -52,7 +52,14 @@ class ProfileViewController: UIViewController {
     }
 
     @IBAction func callAPIWithAuthentication(_ sender: UIButton) {
-        self.callAPI(authenticated: true)
+        SessionManager.shared.credentials { error, credentials in
+            guard error == nil else {
+                print("Error: \(String(describing: error))")
+                return
+            }
+            guard let token = credentials?.accessToken else { return print("Token not found") }
+            self.callAPI(authenticated: true, token: token)
+        }
     }
 
     @IBAction func logout(_ sender: UIBarButtonItem) {
@@ -60,12 +67,13 @@ class ProfileViewController: UIViewController {
         self.presentingViewController?.dismiss(animated: true, completion: nil)
     }
 
-    private func callAPI(authenticated shouldAuthenticate: Bool) {
-        let url = URL(string: "your api url")!
+    func callAPI(authenticated shouldAuthenticate: Bool, token: String? = nil) {
+        let url = URL(string: "http://localhost")! // Your API 
         var request = URLRequest(url: url)
         // Configure your request here (method, body, etc)
         if shouldAuthenticate {
-            guard let token = A0SimpleKeychain(service: "Auth0").string(forKey: "access_token") else {
+            guard let token = token else {
+                print("Token required for bearer authentication")
                 return
             }
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

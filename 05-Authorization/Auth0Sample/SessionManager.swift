@@ -25,73 +25,44 @@ import Foundation
 import SimpleKeychain
 import Auth0
 
-enum SessionManagerError: Error {
-    case noAccessToken
-    case noIdToken
-    case noProfile
-    case missingRoles
-}
-
 class SessionManager {
     static let shared = SessionManager()
-    let keychain = A0SimpleKeychain(service: "Auth0")
-
+    let credentialsManager = CredentialsManager(authentication: Auth0.authentication())
     var profile: Profile?
 
     private init () { }
 
-    func storeTokens(_ accessToken: String, idToken: String) {
-        self.keychain.setString(accessToken, forKey: "access_token")
-        self.keychain.setString(idToken, forKey: "id_token")
+    func store(credentials: Credentials) -> Bool {
+        return self.credentialsManager.store(credentials: credentials)
     }
 
-    func retrieveProfile(_ callback: @escaping (Error?) -> ()) {
-        guard let accessToken = self.keychain.string(forKey: "access_token") else {
-            return callback(SessionManagerError.noAccessToken)
-        }
-        Auth0.authentication()
-            .userInfo(token: accessToken)
-            .start { result in
-                switch(result) {
-                case .success(let profile):
-                    self.profile = profile
-                    callback(nil)
-                case .failure(let error):
-                    callback(error)
-                }
-        }
-    }
-
-    func retrieveRoles(_ callback: @escaping (Error?, String?) -> ()) {
-        guard let idToken = self.keychain.string(forKey: "id_token") else {
-            return callback(SessionManagerError.noIdToken, nil)
-        }
-        guard let userId = profile?.id else {
-            return callback(SessionManagerError.noProfile, nil)
-        }
-        Auth0
-            .users(token: idToken)
-            .get(userId, fields: [], include: true)
-            .start { result in
-                switch result {
-                case .success(let user):
-                guard
-                    let appMetadata = user["app_metadata"] as? [String: Any],
-                    let roles = appMetadata["roles"] as? [String]
-                    else {
-                        return callback(SessionManagerError.missingRoles, nil)
+    func profile(_ callback: @escaping (Error?, Profile?) -> ()) {
+        self.credentials { error, credentials in
+            guard error == nil else { return callback(error, nil) }
+            guard let accessToken = credentials?.accessToken else { return callback(CredentialsManagerError.noCredentials, nil) }
+            Auth0
+                .authentication()
+                .userInfo(token: accessToken)
+                .start { result in
+                    switch(result) {
+                    case .success(let profile):
+                        self.profile = profile
+                        callback(nil, profile)
+                    case .failure(let error):
+                        callback(error, nil)
                     }
-                    callback(nil, roles.first)
-                    break
-                case .failure(let error):
-                    callback(error, nil)
-                    break
-                }
+            }
+        }
+    }
+
+    func credentials(callback: @escaping (Error?, Credentials?) -> Void) {
+        self.credentialsManager.credentials { error, credentials in
+            callback(error, credentials)
         }
     }
 
     func logout() {
-        self.keychain.clearAll()
+        A0SimpleKeychain().clearAll()
     }
-
+    
 }

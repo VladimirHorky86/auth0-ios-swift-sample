@@ -53,14 +53,41 @@ class ProfileViewController: UIViewController {
     }
 
     @IBAction func checkUserRole(sender: UIButton) {
-        SessionManager.shared.retrieveRoles { error, role in
-            DispatchQueue.main.async {
-                guard error == nil else { return self.showErrorRetrievingRolesAlert() }
-                if role == "admin" {
-                    self.showAdminPanel()
-                } else {
+        SessionManager.shared.credentials { error, credentials in
+            guard error == nil else {
+                DispatchQueue.main.async {
+                    print("Error: \(String(describing: error))")
                     self.showAccessDeniedAlert()
                 }
+                return
+            }
+            guard let idToken = credentials?.idToken else {
+                DispatchQueue.main.async {
+                    print("No idToken")
+                    self.showAccessDeniedAlert()
+                }
+                return
+            }
+            Auth0
+                .users(token: idToken)
+                .get(self.profile.id, fields: [], include: true)
+                .start { result in
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(let user):
+                            guard
+                                let appMetadata = user["app_metadata"] as? [String: Any],
+                                let roles = appMetadata["roles"] as? [String],
+                                let role = roles.first, role == "admin"
+                                else {
+                                    return self.showAccessDeniedAlert()
+                            }
+                            self.showAdminPanel()
+                        case .failure(let error):
+                            print("Error: \(error)")
+                            return self.showAccessDeniedAlert()
+                        }
+                    }
             }
         }
     }
@@ -74,8 +101,8 @@ class ProfileViewController: UIViewController {
         self.present(alert, animated: true, completion: nil)
     }
 
-    private func showErrorRetrievingRolesAlert() {
-        let alert = UIAlertController.alert(title: "Error", message: "Could not retrieve roles from server", includeDoneButton: true)
+    private func showErrorRetrievingUserAlert() {
+        let alert = UIAlertController.alert(title: "Error", message: "Could not retrieve user from server", includeDoneButton: true)
         self.present(alert, animated: true, completion: nil)
     }
 }

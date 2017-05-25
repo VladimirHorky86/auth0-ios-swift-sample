@@ -44,16 +44,18 @@ class HomeViewController: UIViewController {
     fileprivate func showLogin() {
         Auth0
             .webAuth()
-            .scope("openid profile offline_access")
+            .scope("openid offline_access")
             .start {
                 switch $0 {
                 case .failure(let error):
-                    // Handle the error
-                    print("Error: \(error)")
+                    print("Auth Error: \(error)")
                 case .success(let credentials):
-                    guard let accessToken = credentials.accessToken, let refreshToken = credentials.refreshToken else { return }
-                    SessionManager.shared.storeTokens(accessToken, refreshToken: refreshToken)
-                    SessionManager.shared.retrieveProfile { error in
+                    _ = SessionManager.shared.store(credentials: credentials)
+                    SessionManager.shared.profile { error, _ in
+                        guard error == nil else {
+                            print("Error: \(String(describing: error))")
+                            return
+                        }
                         DispatchQueue.main.async {
                             self.performSegue(withIdentifier: "ShowProfileNonAnimated", sender: nil)
                         }
@@ -65,10 +67,11 @@ class HomeViewController: UIViewController {
     fileprivate func checkToken() {
         let loadingAlert = UIAlertController.loadingAlert()
         loadingAlert.presentInViewController(self)
-        SessionManager.shared.retrieveProfile { error in
+        SessionManager.shared.profile { error, _ in
             DispatchQueue.main.async {
                 loadingAlert.dismiss(animated: true) {
                     guard error == nil else {
+                        print("Error: \(String(describing: error)) - Presenting Login")
                         return self.showLogin()
                     }
                     self.performSegue(withIdentifier: "ShowProfileNonAnimated", sender: nil)

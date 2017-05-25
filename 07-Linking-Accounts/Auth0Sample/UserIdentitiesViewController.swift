@@ -80,25 +80,32 @@ class UserIdentitiesViewController: UIViewController {
     fileprivate func linkAccountWithIDToken(_ otherUserToken: String) {
         let loadingAlert = UIAlertController.loadingAlert()
         loadingAlert.presentInViewController(self)
-        guard let idToken = SessionManager.shared.idToken else { return }
-        Auth0
-            .users(token: idToken)
-            .link(self.userId, withOtherUserToken: otherUserToken)
-            .start { result in
-                DispatchQueue.main.async {
-                    loadingAlert.dismiss() {
-                        switch result {
-                        case .success:
-                            let successAlert = UIAlertController.alertWithTitle(nil, message: "Successfully linked account!")
-                            successAlert.presentInViewController(self, dismissAfter: 1.0) { completion in
-                                self.updateIdentities()
+        SessionManager.shared.credentials { error, credentials in
+            guard error == nil else {
+                return print("Error: \(String(describing: error))")
+            }
+            guard let idToken = credentials?.idToken else {
+                return print("No idToken")
+            }
+            Auth0
+                .users(token: idToken)
+                .link(self.userId, withOtherUserToken: otherUserToken)
+                .start { result in
+                    DispatchQueue.main.async {
+                        loadingAlert.dismiss() {
+                            switch result {
+                            case .success:
+                                let successAlert = UIAlertController.alertWithTitle(nil, message: "Successfully linked account!")
+                                successAlert.presentInViewController(self, dismissAfter: 1.0) { completion in
+                                    self.updateIdentities()
+                                }
+                            case .failure(let error):
+                                let failureAlert = UIAlertController.alertWithTitle("Error", message: error.localizedDescription, includeDoneButton: true)
+                                failureAlert.presentInViewController(self)
                             }
-                        case .failure(let error):
-                            let failureAlert = UIAlertController.alertWithTitle("Error", message: error.localizedDescription, includeDoneButton: true)
-                            failureAlert.presentInViewController(self)
                         }
                     }
-                }
+            }
         }
     }
 
@@ -120,8 +127,13 @@ class UserIdentitiesViewController: UIViewController {
     fileprivate func unlinkIdentity(_ identity: Identity) {
         let loadingAlert = UIAlertController.loadingAlert()
         loadingAlert.presentInViewController(self)
-        guard let idToken = SessionManager.shared.idToken else { return }
-        SessionManager.shared.retrieveProfile { error in
+        SessionManager.shared.credentials { error, credentials in
+            guard error == nil else {
+                return print("Error: \(String(describing: error))")
+            }
+            guard let idToken = credentials?.idToken else {
+                return print("No idToken")
+            }
             guard error == nil else { return }
             Auth0
                 .users(token: idToken)

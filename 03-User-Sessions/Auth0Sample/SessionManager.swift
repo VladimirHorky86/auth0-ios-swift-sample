@@ -25,65 +25,44 @@ import Foundation
 import SimpleKeychain
 import Auth0
 
-enum SessionManagerError: Error {
-    case noAccessToken
-    case noRefreshToken
-}
-
 class SessionManager {
     static let shared = SessionManager()
-    let keychain = A0SimpleKeychain(service: "Auth0")
+    let credentialsManager = CredentialsManager(authentication: Auth0.authentication())
     var profile: Profile?
 
     private init () { }
 
-    func storeTokens(_ accessToken: String, refreshToken: String? = nil) {
-        self.keychain.setString(accessToken, forKey: "access_token")
-        if let refreshToken = refreshToken {
-            self.keychain.setString(refreshToken, forKey: "refresh_token")
+    func store(credentials: Credentials) -> Bool {
+        return self.credentialsManager.store(credentials: credentials)
+    }
+
+    func profile(_ callback: @escaping (Error?, Profile?) -> ()) {
+        self.credentials { error, credentials in
+            guard error == nil else { return callback(error, nil) }
+            guard let accessToken = credentials?.accessToken else { return callback(CredentialsManagerError.noCredentials, nil) }
+            Auth0
+                .authentication()
+                .userInfo(token: accessToken)
+                .start { result in
+                    switch(result) {
+                    case .success(let profile):
+                        self.profile = profile
+                        callback(nil, profile)
+                    case .failure(let error):
+                        callback(error, nil)
+                    }
+            }
         }
     }
 
-    func retrieveProfile(_ callback: @escaping (Error?) -> ()) {
-        guard let accessToken = self.keychain.string(forKey: "access_token") else {
-            return callback(SessionManagerError.noAccessToken)
-        }
-        Auth0
-            .authentication()
-            .userInfo(token: accessToken)
-            .start { result in
-                switch(result) {
-                case .success(let profile):
-                    self.profile = profile
-                    callback(nil)
-                case .failure(_):
-                    self.refreshToken(callback)
-                }
-        }
-    }
-
-    func refreshToken(_ callback: @escaping (Error?) -> ()) {
-        guard let refreshToken = self.keychain.string(forKey: "refresh_token") else {
-            return callback(SessionManagerError.noRefreshToken)
-        }
-        Auth0
-            .authentication()
-            .renew(withRefreshToken: refreshToken, scope: "openid profile offline_access")
-            .start { result in
-                switch(result) {
-                case .success(let credentials):
-                    guard let accessToken = credentials.accessToken else { return }
-                    self.storeTokens(accessToken)
-                    self.retrieveProfile(callback)
-                case .failure(let error):
-                    callback(error)
-                    self.logout()
-                }
+    func credentials(callback: @escaping (Error?, Credentials?) -> Void) {
+        self.credentialsManager.credentials { error, credentials in
+            callback(error, credentials)
         }
     }
 
     func logout() {
-        self.keychain.clearAll()
+        A0SimpleKeychain().clearAll()
     }
     
 }
